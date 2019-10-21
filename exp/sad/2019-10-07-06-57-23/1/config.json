@@ -1,0 +1,117 @@
+{
+  "alpha_anneal_start": 5000,
+  "alpha_anneal_stop": 10000,
+  "alpha_final": 2.0,
+  "audio_reader": {
+    "source_sample_rate": 16000,
+    "target_sample_rate": 16000
+  },
+  "batch_size": 16,
+  "bucket_expiration": 32000,
+  "checkpoint_interval": 10000,
+  "debug": false,
+  "device": 0,
+  "gradient_clipping": 10.0,
+  "holdout_evaluation": false,
+  "holdout_validation": false,
+  "k": 1,
+  "lr": 0.0003,
+  "max_padding_rate": 0.2,
+  "max_scale": 4.0,
+  "max_steps": 100000,
+  "mel_transform": {
+    "fft_length": 1024,
+    "fmin": 200,
+    "n_mels": 64,
+    "sample_rate": 16000
+  },
+  "mixup": true,
+  "model": {
+    "cnn_1d": {
+      "activation": "relu",
+      "dropout": 0.0,
+      "hidden_channels": 128,
+      "in_channels": 512,
+      "kernel_size": [
+        3,
+        1
+      ],
+      "norm": "batch",
+      "num_layers": 2,
+      "out_channels": 1
+    },
+    "cnn_2d": {
+      "activation": "relu",
+      "dropout": 0.0,
+      "gated": false,
+      "hidden_channels": [
+        16,
+        16,
+        32,
+        32,
+        64,
+        64
+      ],
+      "in_channels": 1,
+      "kernel_size": 3,
+      "norm": "batch",
+      "num_layers": 6,
+      "out_channels": null,
+      "pool_size": [
+        1,
+        2,
+        1,
+        [
+          2,
+          1
+        ],
+        1,
+        [
+          2,
+          5
+        ]
+      ]
+    },
+    "label_key": "presence",
+    "pool": {
+      "n_classes": 1,
+      "trainable": false
+    },
+    "recall_weight": 2.0
+  },
+  "nodes": [
+    "Node1",
+    "Node2",
+    "Node3",
+    "Node4",
+    "Node6",
+    "Node7",
+    "Node8"
+  ],
+  "normalizer": {
+    "center_axis": [
+      1
+    ],
+    "scale_axis": [
+      1,
+      2
+    ],
+    "storage_dir": "/net/vol/ebbers/exp/sins/2019-10-07-06-56-38/packages/sins/exp/sad/2019-10-07-06-57-23"
+  },
+  "num_workers": 8,
+  "prefetch_buffer": 32,
+  "rooms": [
+    "living"
+  ],
+  "seed": 657788991,
+  "segment_length": 60.0,
+  "shuffle_buffer": 128,
+  "stft": {
+    "fft_length": 1024,
+    "frame_length": 960,
+    "frame_step": 320,
+    "pad_mode": "mean"
+  },
+  "summary_interval": 100,
+  "validation_interval": 10000
+}
