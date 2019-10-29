@@ -158,7 +158,7 @@ def get_segments(
             start_time, stop_time, max_segment_length
         ) if (
             min(max_segment_length, stop_time - segment_start)
-            > min_segment_length
+            >= min_segment_length
         )
     }
     if dataset is not None:
@@ -189,7 +189,7 @@ def get_session_segments(
         for segment_start in np.arange(
             session_start, session_stop, max_segment_length
         ):
-            if session_stop - segment_start > min_segment_length:
+            if session_stop - segment_start >= min_segment_length:
                 key = '{}{:.0f}_{:.0f}'.format(
                     segment_key_prefix, segment_start,
                     min(segment_start + max_segment_length, session_stop)
