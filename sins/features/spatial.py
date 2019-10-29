@@ -47,3 +47,42 @@ class Coherence:
         x = example['stft']
         example['coherence'] = self.transform(x)
         return example
+
+
+class IPDExtractor:
+    """
+    C: Number of sensors
+    T: Number of time frames
+    F: Number of frequency bins
+
+    >>> dumb_sine_cosine_ipd_extractor = IPDExtractor()
+    >>> dumb_sine_cosine_ipd_extractor.transform(np.random.randn(4, 100, 257)).shape
+    (6, 100, 257)
+    """
+    def __init__(self, reference_channel=0):
+        self.reference_channel = reference_channel
+
+    def transform(self, x):
+        """
+
+        Args:
+            x: STFT signal with shape (C, T, F)
+
+        Returns: Feature map of shape (2 * (C - 1), T, F)
+
+        """
+        num_channels = x.shape[0]
+        all_other_channels = [
+            d for d in range(num_channels)
+            if not d == self.reference_channel
+        ]
+        ipd = np.angle(
+            x[all_other_channels] * x[[self.reference_channel]].conj()
+        )
+        sin_ipd = np.sin(ipd)
+        cos_ipd = np.cos(ipd)
+        return np.concatenate([sin_ipd, cos_ipd], axis=0)
+
+    def __call__(self, example):
+        example['ipd'] = self.transform(example['stft'])
+        return example
