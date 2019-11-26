@@ -6,7 +6,7 @@ If you are using code or results of SAD or SEC please cite the following paper:
 ```
 @InProceedings{ebbers2019weakly,
   author    = {Ebbers, Janek and Drude, Lukas and Brendel, Andreas and Kellermann, Walter and Haeb-Umbach Reinhold},
-  title     = {Weakly Supervised Sound Activity Detection and event classification in acoustic sensor networks},
+  title     = {Weakly Supervised Sound Activity Detection and Event Classification in Acoustic Sensor Networks},
   booktitle = {{IEEE} {International} {Workshop} on {Computational} {Advances} in {Multi}-{Sensor} {Adaptive} {Processing} ({CAMSAP})},
   year      = {2019},
   address   = {Guadeloupe, West Indies},
