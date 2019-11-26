@@ -5,6 +5,8 @@ from cached_property import cached_property
 
 
 class MelTransform:
+    """transforms stft to (log) mel spectrogram.
+    """
     def __init__(
             self,
             sample_rate: int,
@@ -15,7 +17,6 @@ class MelTransform:
             log: bool = True
     ):
         """
-        Transforms stft to (log) mel spectrogram.
 
         Args:
             sample_rate: sample rate of audio signal

@@ -11,8 +11,7 @@ class STFT:
             window: str = "blackman",
             pad_mode: str = "mean"
     ):
-        """
-        Transforms audio data to STFT.
+        """transforms audio data to STFT.
 
         Args:
             frame_step:
@@ -55,6 +54,5 @@ class STFT:
         return x
 
     def __call__(self, example):
-        audio = example["audio_data"]
-        example["stft"] = self.transform(audio)
+        example["stft"] = self.transform(example["audio_data"])
         return example

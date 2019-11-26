@@ -6,10 +6,23 @@ from tqdm import tqdm
 
 
 class Normalizer:
+    """perform global mean and scale normalization.
+    """
     def __init__(
             self, key, center_axis=None, scale_axis=None, storage_dir=None,
             name=None
     ):
+        """
+
+        Args:
+            key: key to be normalized within an example dict
+            center_axis: int or tuple stating the axis over which to compute
+                the mean
+            scale_axis: int or tuple stating the axis over which to compute
+                the scale (variance if center_axis != None)
+            storage_dir: directory where to store the precomputed means and scales.
+            name: file prefix when storing moments
+        """
         self.key = key
         self.center_axis = None if center_axis is None else tuple(center_axis)
         self.scale_axis = None if scale_axis is None else tuple(scale_axis)
@@ -29,14 +42,11 @@ class Normalizer:
         return example
 
     def initialize_moments(self, dataset=None, verbose=False):
-        """
-        Loads or computes the global mean (center) and scale over a dataset.
+        """loads or computes the global mean (center) and scale over a dataset.
 
         Args:
             dataset: lazy dataset providing example dicts
             verbose:
-
-        Returns:
 
         """
         filepath = None if self.storage_dir is None \

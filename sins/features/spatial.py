@@ -7,10 +7,34 @@ from math import ceil
 
 
 class Coherence:
+    """compute coherence magnitude and sine and cosine of coherence phase.
+
+    C: Number of sensors
+    T: Number of time frames
+    F: Number of frequency bins
+
+    >>> coherence_extractor = Coherence()
+    >>> coherence_extractor.transform(np.random.randn(4, 100, 257)).shape
+    (18, 100, 257)
+    """
     def __init__(self, smooth_len=21):
+        """
+
+        Args:
+            smooth_len: number frames in sliding window to smooth the psd
+                estimation.
+        """
         self.smooth_len = smooth_len
 
     def transform(self, x):
+        """
+
+        Args:
+            x: STFT signal with shape (C, T, F)
+
+        Returns: Feature map of shape (3 * C * (C - 1) / 2, T, F)
+
+        """
         psds = np.einsum('...ctf,...dtf->...tfcd', x, x.conj())
 
         if self.smooth_len is not None:
@@ -44,19 +68,19 @@ class Coherence:
         return rearrange(coherence, 't f c -> c t f')
 
     def __call__(self, example):
-        x = example['stft']
-        example['coherence'] = self.transform(x)
+        example['coherence'] = self.transform(example['stft'])
         return example
 
 
 class IPDExtractor:
-    """
+    """compute sine and cosine of inter-channel phase differences
+
     C: Number of sensors
     T: Number of time frames
     F: Number of frequency bins
 
-    >>> dumb_sine_cosine_ipd_extractor = IPDExtractor()
-    >>> dumb_sine_cosine_ipd_extractor.transform(np.random.randn(4, 100, 257)).shape
+    >>> ipd_extractor = IPDExtractor()
+    >>> ipd_extractor.transform(np.random.randn(4, 100, 257)).shape
     (6, 100, 257)
     """
     def __init__(self, reference_channel=0):
