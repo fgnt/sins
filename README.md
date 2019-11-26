@@ -1,13 +1,16 @@
-This repository provides utility functions to prepare and use the sins database in python.
+This repository provides utility functions to prepare and use the SINS database in python.
 It also provides the source code for sound activity detection (SAD) and sound event classification (SEC) systems.
 
 If you are using code for SAD or SEC please cite the following paper:
 
 ```
-@Article{ebbers2019weakly,
-  author    = {Ebbers, Janek and Drude, Lukas and Brendel, Andreas and Kellermann, Walter and Haeb-Umbach, Reinhold},
-  title     = {Weakly supervised sound activity detection and event classification in acoustic sensor networks},
-  year      = {2019}
+@InProceedings{ebbers2019weakly,
+  author    = {Ebbers, Janek and Drude, Lukas and Brendel, Andreas and Kellermann, Walter and Haeb-Umbach Reinhold},
+  title     = {Weakly Supervised Sound Activity Detection and event classification in acoustic sensor networks},
+  booktitle = {{IEEE} {International} {Workshop} on {Computational} {Advances} in {Multi}-{Sensor} {Adaptive} {Processing} ({CAMSAP})},
+  year      = {2019},
+  address   = {Guadeloupe, West Indies},
+  month     = dec
 }
 ```
 
