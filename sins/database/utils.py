@@ -5,6 +5,31 @@ def prepare_sessions(
         sessions, room=None, include_absence=True, discard_other_rooms=False,
         discard_ambiguities=False, label_map_fn=None, merge=True
 ):
+    """preprocesses sessions for a certain task.
+
+    If you, e.g., perform sound activity detection each session can be mapped
+    to presence, consecutive presence sessions can be merged to a single
+    presence session, and in the gabs between presence absence can be added.
+
+    Args:
+        sessions: list of tuples (<session>, <session_onset>, <session_offset>)
+        room: optional str. If set sessions for a single room will be prepared.
+        include_absence: bool stating whether to add absence sessions in the
+            gaps of sessions.
+        discard_other_rooms: bool stating, if you prepare sessions for a single
+            room, whether to discard sessions where the person is absent in the
+            current room but present in another room and potentially making
+            sounds. The is a special case for sleeping though: sleeping is
+            always treated as absence in the other rooms even if
+            discard_other_rooms is True.
+        discard_ambiguities: bool stating whether to discard those times where
+            two sessions overlap, e.g., when the person is between two rooms.
+        label_map_fn: optional mapping function to be applied to the labels.
+        merge: bool stating whether to merge consecutive sections
+
+    Returns: preprocessed sessions as list of tuples
+
+    """
     sessions = sorted(sessions, key=lambda x: x[1])
     start = sessions[0][1]
     stop = sessions[-1][2]
@@ -36,6 +61,15 @@ def prepare_sessions(
 
 
 def filter_sessions_by_room(sessions, room):
+    """only keep sessions within the room <room>
+
+    Args:
+        sessions: list of tuples
+        room: str
+
+    Returns: filtered sessions as list of tuples
+
+    """
     return [
         [session[0].split(":")[0], session[1], session[2]]
         for session in sessions if session[0].endswith(room)
@@ -43,12 +77,35 @@ def filter_sessions_by_room(sessions, room):
 
 
 def discard_sessions_by_scene(sessions, scene):
+    """discard certain scenes, e.g., sleeping, which would then be treated as
+    absence.
+
+    Args:
+        sessions: list of tuples
+        scene: str
+
+    Returns: filtered sessions as list of tuples
+
+    """
     return [
         session for session in sessions if not session[0].startswith(scene)
     ]
 
 
 def fill_with_label(sessions, label, start=None, stop=None, min_gap=.1):
+    """fill gaps with a certain label, e.g., absence.
+
+    Args:
+        sessions: list of tuples
+        label: label str to be added in the gaps
+        start: starting time
+        stop: stopping time
+        min_gap: minimum gap length that has to be met to be filled with
+            label.
+
+    Returns: sessions as list of tuples filled with additional sessions.
+
+    """
     sessions = sorted(sessions, key=lambda x: x[1])
     cur_stop = sessions[0][1] if start is None else start
     for i in range(len(sessions)):
@@ -66,6 +123,15 @@ def fill_with_label(sessions, label, start=None, stop=None, min_gap=.1):
 
 
 def discard_ambiguous_sections(sections):
+    """discard those times where two sections overlap.
+
+    Args:
+        sections: list of tuples either of the form (<label>, <onset>, <offset>)
+            or (<onset>, <offset>)
+
+    Returns: adapted sections of the same form as input sections
+
+    """
     sections = sorted(sections, key=lambda x: x[-2])
     if sections:
         last_section = sections[0]
@@ -80,6 +146,17 @@ def discard_ambiguous_sections(sections):
 
 
 def merge_consecutive_sections(sections, gap_tolerance=.1):
+    """
+
+    Args:
+        sections: list of tuples either of the form (<label>, <onset>, <offset>)
+            or (<onset>, <offset>)
+        gap_tolerance: maximum gap length that will be bridged by merging the
+            sections.
+
+    Returns: merged sections of the same form as input sections
+
+    """
     merged_sections = []
     active_sections = []
     for session in sorted(sections, key=lambda x: x[-2]):
@@ -101,8 +178,7 @@ def merge_consecutive_sections(sections, gap_tolerance=.1):
 
 
 def annotate(dataset: (list, tuple, dict), annotation, label_key):
-    """
-    Adds annotations to each example in dataset.
+    """adds annotations to each example in dataset inplace.
 
     Args:
         dataset:
@@ -114,8 +190,21 @@ def annotate(dataset: (list, tuple, dict), annotation, label_key):
     >>> annotate(dataset, annotation, 'label')
     >>> from pprint import pprint
     >>> pprint(dataset)
-
-    Returns:
+    [{'audio_length': 1.0,
+      'label': [],
+      'label_start_times': [],
+      'label_stop_times': [],
+      'timestamp': 0.0},
+     {'audio_length': 5.0,
+      'label': ['a', 'b'],
+      'label_start_times': [0.0, 1.0],
+      'label_stop_times': [2.0, 5.0],
+      'timestamp': 2.0},
+     {'audio_length': 3.0,
+      'label': ['b'],
+      'label_start_times': [0.0],
+      'label_stop_times': [3.0],
+      'timestamp': 6.0}]
 
     """
 
@@ -154,21 +243,38 @@ def annotate(dataset: (list, tuple, dict), annotation, label_key):
 
 
 def add_audio_paths(segments: (list, tuple, dict), files: (list, tuple, dict)):
-    """
-    Adds audio paths to segments.
+    """adds audio paths to segments inplace.
 
     Args:
         segments:
         files:
 
     >>> dataset = [{'timestamp': 0., 'audio_length': 1.}, {'timestamp': 2., 'audio_length': 5.}, {'timestamp': 6., 'audio_length': 3.}]
-    >>> annotation = [('a', 2., 4.), ('b', 3., 10.)]
-    >>> annotate(dataset, annotation, 'label')
+    >>> files = [\
+            {'timestamp': 0., 'audio_length': 5., 'audio_path': '/a/b/c', 'node_id': 1, 'num_samples': 5*16000},\
+            {'timestamp': 5., 'audio_length': 5., 'audio_path': '/a/b/d', 'node_id': 1, 'num_samples': 5*16000},\
+        ]
+    >>> add_audio_paths(dataset, files)
     >>> from pprint import pprint
     >>> pprint(dataset)
-
-    Returns:
-
+    [{'audio_length': 1.0,
+      'audio_path': ['/a/b/c'],
+      'audio_start_samples': [0],
+      'audio_stop_samples': [16000],
+      'node_id': 1,
+      'timestamp': 0.0},
+     {'audio_length': 5.0,
+      'audio_path': ['/a/b/c', '/a/b/d'],
+      'audio_start_samples': [32000, 0],
+      'audio_stop_samples': [80000, 32000],
+      'node_id': 1,
+      'timestamp': 2.0},
+     {'audio_length': 3.0,
+      'audio_path': ['/a/b/d'],
+      'audio_start_samples': [16000],
+      'audio_stop_samples': [64000],
+      'node_id': 1,
+      'timestamp': 6.0}]
     """
 
     # get lists sorted by timestamp
@@ -238,14 +344,13 @@ def add_audio_paths(segments: (list, tuple, dict), files: (list, tuple, dict)):
 
 
 def read_annotation_from_dataset(dataset: (list, tuple, dict), label_key):
-    """
-    Reads the annotation from dataset. Basically reverting annotate.
+    """reads the annotation from dataset. Basically reverting annotate.
 
     Args:
         dataset:
         label_key:
 
-    Returns:
+    Returns: annotation
 
     >>> dataset = [{'timestamp': 0., 'audio_length': 1.}, {'timestamp': 2., 'audio_length': 5.}, {'timestamp': 6., 'audio_length': 3.}]
     >>> annotation = [('a', 2., 4.), ('b', 3., 10.)]
