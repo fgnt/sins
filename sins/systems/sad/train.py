@@ -1,17 +1,14 @@
-"""
-Example call:
-
-export STORAGE_ROOT=<your desired storage root>
-python -m padertorch.contrib.examples.wavenet.train print_config
-python -m padertorch.contrib.examples.wavenet.train
-"""
 import os
-from collections import defaultdict
 
 import lazy_dataset
 import numpy as np
-import tensorboardX
 import torch
+from padertorch import Trainer
+from padertorch.contrib.je.data.transforms import Collate
+from padertorch.contrib.je.modules.conv import CNN2d, CNN1d
+from padertorch.contrib.je.modules.global_pooling import AutoPool
+from padertorch.train.hooks import ModelAttributeAnnealingHook
+from padertorch.train.optimizer import Adam
 from sacred import Experiment as Exp
 from sacred.commands import print_config
 from sacred.observers import FileStorageObserver
@@ -21,11 +18,8 @@ from sins.features.mel_transform import MelTransform
 from sins.features.normalize import Normalizer
 from sins.features.stft import STFT
 from sins.paths import exp_dir
-from sins.systems.modules import CNN2d, CNN1d, AutoPool
 from sins.systems.sad.model import BinomialClassifier
-from sins.systems.utils import Collate, batch_to_device
 from sins.utils import timestamp
-from torch.optim import Adam
 
 ex = Exp('sad-training')
 storage_dir = exp_dir / 'sad' / timestamp()
@@ -75,45 +69,52 @@ def config():
 
     # Model configuration
     k = 1
-    model = {
-        'label_key': 'presence',
-        'cnn_2d': {
-            'in_channels': 1,
-            'hidden_channels': (np.array([16, 16, 32, 32, 64, 64])*k).tolist(),
-            'pool_size': [1, 2, 1, (2, 1), 1, (2, 5)],
-            'num_layers': 6,
-            'out_channels': None,
-            'kernel_size': 3,
-            'norm': 'batch',
-            'activation': 'relu',
-            'gated': False,
-            'dropout': .0,
+    trainer = {
+        'model': {
+            'factory': BinomialClassifier,
+            'label_key': 'presence',
+            'cnn_2d': {
+                'factory': CNN2d,
+                'in_channels': 1,
+                'out_channels': (np.array([16, 16, 32, 32, 64, 64])*k).tolist(),
+                'pool_size': [1, 2, 1, (2, 1), 1, (2, 5)],
+                'output_layer': False,
+                'kernel_size': 3,
+                'norm': 'batch',
+                'activation_fn': 'relu',
+                'dropout': .0,
+            },
+            'cnn_1d': {
+                'factory': CNN1d,
+                'in_channels': mel_transform['n_mels']*k*8,
+                'out_channels': [128*k, 1],
+                'kernel_size': [3, 1],
+                'norm': 'batch',
+                'activation_fn': 'relu',
+                'dropout': .0
+            },
+            'pooling': {
+                'factory': AutoPool,
+                'n_classes': 1,
+                'trainable': False
+            },
+            'recall_weight': 1.
         },
-        'cnn_1d': {
-            'in_channels': mel_transform['n_mels']*k*8,
-            'hidden_channels': 128*k,
-            'out_channels': 1,
-            'num_layers': 2,
-            'kernel_size': [3, 1],
-            'norm': 'batch',
-            'activation': 'relu',
-            'dropout': .0
+        'optimizer': {
+            'factory': Adam,
+            'lr': 3e-4,
+            'gradient_clipping': 10.,
         },
-        'pool': {'n_classes': 1, 'trainable': False, 'detach_weights': False},
-        'recall_weight': 1.
+        'storage_dir': storage_dir,
+        'summary_trigger': (10 if debug else 500, 'iteration'),
+        'checkpoint_trigger': (100 if debug else 5000, 'iteration'),
+        'stop_trigger': (1000 if debug else 30000, 'iteration'),
     }
+    Trainer.get_config(trainer)
 
-    # Training configuration
     device = 0 if torch.cuda.is_available() else 'cpu'
-    lr = 3e-4
-    gradient_clipping = 10.
-    summary_interval = 10 if debug else 100
-    validation_interval = 100 if debug else 10000
-    max_steps = 1000 if debug else 100000
-    checkpoint_interval = validation_interval
     alpha_final = 2.
-    alpha_anneal_start = 50 if debug else 5000
-    alpha_anneal_stop = 100 if debug else 10000
+    alpha_slope = 1 / 10000
 
     max_scale = 4.
     mixup = True
@@ -201,7 +202,6 @@ def get_datasets(
         ds.filter(filter_missing_data, lazy=False).map(audio_reader)
         for ds in train_data
     ]
-
     validate_data = [
         ds.filter(filter_missing_data, lazy=False).map(audio_reader)
         for ds in validate_data
@@ -210,6 +210,10 @@ def get_datasets(
         ds.filter(filter_missing_data, lazy=False).map(audio_reader)
         for ds in absence_data
     ]
+    if debug:
+        train_data = [ds[:100]for ds in train_data]
+        validate_data = [ds[:10]for ds in validate_data]
+        absence_data = [ds[:10]for ds in absence_data]
 
     stft = STFT(**stft)
     mel_transform = MelTransform(**mel_transform)
@@ -260,148 +264,38 @@ def get_datasets(
             for i, features in enumerate(example["mel_transform"])
         ]
 
-    def finalize_dataset(datasets):
+    def finalize_dataset(datasets, training=False):
         dataset = lazy_dataset.concatenate([
             ds.map(stft).map(mel_transform).map(normalizer)
             for ds, normalizer in zip(datasets, normalizers)
-        ])
+        ]).map(finalize)
         print(len(dataset))
-        return dataset.map(finalize).shuffle(reshuffle=True).prefetch(
+        return dataset.shuffle(reshuffle=training).prefetch(
             num_workers, prefetch_buffer
         ).unbatch().shuffle(
             reshuffle=True, buffer_size=shuffle_buffer
         ).batch_dynamic_time_series_bucket(
             batch_size, len_key="seq_len", max_padding_rate=max_padding_rate,
-            expiration=bucket_expiration, drop_incomplete=True,
+            expiration=bucket_expiration, drop_incomplete=training,
             sort_key="seq_len", reverse_sort=True
         ).map(Collate())
 
-    return finalize_dataset(train_data), finalize_dataset(validate_data)
+    return finalize_dataset(train_data, training=True), finalize_dataset(validate_data)
 
 
 @ex.automain
-def train(
-        _run, model, device, lr, gradient_clipping, max_steps,
-        summary_interval, validation_interval, checkpoint_interval,
-        alpha_final, alpha_anneal_start, alpha_anneal_stop
-):
+def train(_run, trainer, device, alpha_slope, alpha_final):
     print_config(_run)
     os.makedirs(storage_dir, exist_ok=True)
+    trainer = Trainer.from_config(trainer)
     train_iter, validate_iter = get_datasets()
-    model = BinomialClassifier(
-        cnn_2d=CNN2d(**model['cnn_2d']),
-        cnn_1d=CNN1d(**model['cnn_1d']),
-        pooling=AutoPool(**model['pool'])
-    )
-    print(sum(p.numel() for p in model.parameters() if p.requires_grad))
-    model = model.to(device)
-    model.train()
-    optimizer = Adam(tuple(model.parameters()), lr=lr)
-
-    torch.backends.cudnn.enabled = True
-    torch.backends.cudnn.benchmark = False
-
-    # Summary
-    summary_writer = tensorboardX.SummaryWriter(str(storage_dir))
-
-    def get_empty_summary():
-        return dict(
-            scalars=defaultdict(list),
-            histograms=defaultdict(list),
-            images=dict(),
+    if validate_iter is not None:
+        trainer.register_validation_hook(
+            validate_iter, metric='fscore', maximize=True, max_checkpoints=None
         )
 
-    def update_summary(review, summary):
-        review['scalars']['loss'] = review['loss'].detach()
-        for key, value in review['scalars'].items():
-            if torch.is_tensor(value):
-                value = value.cpu().data.numpy()
-            summary['scalars'][key].extend(
-                np.array(value).flatten().tolist()
-            )
-        for key, value in review['histograms'].items():
-            if torch.is_tensor(value):
-                value = value.cpu().data.numpy()
-            summary['histograms'][key].extend(
-                np.array(value).flatten().tolist()
-            )
-        summary['images'] = review['images']
-
-    def dump_summary(summary, prefix, iteration):
-        # write summary
-        for key, value in summary['scalars'].items():
-            summary_writer.add_scalar(
-                f'{prefix}/{key}', np.mean(value), iteration
-            )
-        for key, values in summary['histograms'].items():
-            summary_writer.add_histogram(
-                f'{prefix}/{key}', np.array(values), iteration
-            )
-        for key, image in summary['images'].items():
-            summary_writer.add_image(
-                f'{prefix}/{key}', image, iteration
-            )
-        return defaultdict(list)
-
-    # Training loop
-    print('Start Training')
-    alpha_slope = (alpha_final - 1.) / (alpha_anneal_stop - alpha_anneal_start)
-    train_summary = get_empty_summary()
-    i = 0
-    best_validation_loss = np.inf
-    while i < max_steps:
-        for batch in train_iter:
-            optimizer.zero_grad()
-            # forward
-            batch = batch_to_device(batch, device=device)
-            model_out = model(batch)
-
-            # backward
-            review = model.review(batch, model_out)
-            review['loss'].backward()
-            review['histograms']['grad_norm'] = torch.nn.utils.clip_grad_norm_(
-                tuple(model.parameters()), gradient_clipping
-            )
-            optimizer.step()
-
-            # update summary
-            update_summary(review, train_summary)
-
-            i += 1
-            model.pooling.alpha = 1. + max(min(i, alpha_anneal_stop) - alpha_anneal_start, 0.) * alpha_slope
-            if i % summary_interval == 0:
-                train_summary = model.modify_summary(train_summary)
-                dump_summary(train_summary, 'training', i)
-                train_summary = get_empty_summary()
-            if i % validation_interval == 0 and validate_iter is not None:
-                print('Starting Validation')
-                model.eval()
-                validate_summary = get_empty_summary()
-                with torch.no_grad():
-                    for batch in validate_iter:
-                        batch = batch_to_device(batch, device=device)
-                        model_out = model(batch)
-                        review = model.review(batch, model_out)
-                        update_summary(review, validate_summary)
-                validate_summary = model.modify_summary(validate_summary)
-                dump_summary(validate_summary, 'validation', i)
-                validation_loss = validate_summary["scalars"]["loss"]
-                print('Finished Validation')
-                if validation_loss < best_validation_loss:
-                    print('New best validation loss:', validation_loss)
-                    best_validation_loss = validation_loss
-                    torch.save(
-                        model.state_dict(),
-                        storage_dir / 'ckpt-best.pth'
-                    )
-                else:
-                    print('Validation loss:', validation_loss)
-                print('Validation F-score:', validate_summary["scalars"]["fscore"])
-                model.train()
-            if i % checkpoint_interval == 0:
-                torch.save(
-                    model.state_dict(),
-                    storage_dir / f'ckpt-{i}.pth'
-                )
-            if i >= max_steps:
-                break
+    trainer.register_hook(ModelAttributeAnnealingHook(
+        'pooling.alpha', (100, 'iteration'),
+        slope=alpha_slope, max_value=alpha_final
+    ))
+    trainer.train(train_iter, device=device)

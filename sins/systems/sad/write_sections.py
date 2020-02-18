@@ -3,15 +3,15 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from padertorch.contrib.je.data.transforms import Collate
+from padertorch.data import example_to_device
 from sacred import Experiment as Exp
 from sins import paths
 from sins.database.database import SINS, AudioReader
 from sins.features.mel_transform import MelTransform
 from sins.features.normalize import Normalizer
 from sins.features.stft import STFT
-from sins.systems.modules import CNN2d, CNN1d, AutoPool
 from sins.systems.sad.model import BinomialClassifier
-from sins.systems.utils import Collate, batch_to_device
 
 ex = Exp('sad-write_sections')
 
@@ -19,15 +19,12 @@ ex = Exp('sad-write_sections')
 @ex.config
 def config():
     debug = False
-    exp_dir = str(paths.exp_dir / 'sad' / '2019-10-07-06-57-23')
+    exp_dir = ''
     assert len(exp_dir) > 0, 'Set exp_dir on the command line.'
-    checkpoint = 'best'
-    with (Path(exp_dir) / '1' / 'config.json').open() as f:
-        conf = json.load(f)
-    max_segment_length = conf['segment_length']
+    checkpoint = 'best_fscore'
+    max_segment_length = 60.
     num_workers = 2
     prefetch_buffer = 4
-    del conf
 
     device = 0 if torch.cuda.is_available() else 'cpu'
     decision_threshold = 0.5
@@ -45,13 +42,11 @@ def main(
 
     print(device)
     # load model
-    model = BinomialClassifier(
-        cnn_2d=CNN2d(**conf['model']['cnn_2d']),
-        cnn_1d=CNN1d(**conf['model']['cnn_1d']),
-        pooling=AutoPool(**conf['model']['pool'])
+    # load model
+    model = BinomialClassifier.from_storage_dir(
+        storage_dir=exp_dir, config_name='1/config.json',
+        checkpoint_name=f'ckpt_{checkpoint}.pth'
     )
-    ckpt = torch.load(exp_dir / f'ckpt-{checkpoint}.pth')
-    model.load_state_dict(ckpt)
     model.pooling.alpha = 2.0
     model.to(device)
     model.eval()
@@ -103,7 +98,7 @@ def main(
             assert not any(cur_stops)
             # prepare batch
             batch = [example for batch in batches for example in batch]
-            batch = batch_to_device(Collate()(batch), device)
+            batch = example_to_device(Collate()(batch), device)
             assert len(set(batch['timestamp'])) == 1
             timestamp = batch['timestamp'][0]
             if stop_time is not None:

@@ -7,13 +7,11 @@ import numpy as np
 import torch
 from einops import rearrange
 from sacred import Experiment as Exp
-from sins import paths
 from sins.database.database import SINS, AudioReader
 from sins.database.utils import prepare_sessions
 from sins.features.mel_transform import MelTransform
 from sins.features.normalize import Normalizer
 from sins.features.stft import STFT
-from sins.systems.modules import CNN2d, CNN1d, AutoPool
 from sins.systems.sad.model import BinomialClassifier
 from sins.systems.utils import Collate, batch_to_device
 
@@ -24,17 +22,14 @@ db = SINS()
 
 @ex.config
 def config():
-    exp_dir = str(paths.exp_dir / 'sad' / '2019-10-07-06-57-23')
+    exp_dir = ''
     assert len(exp_dir) > 0, 'Set exp_dir on the command line.'
     sound_events_dir = ''
     assert len(sound_events_dir) > 0, 'Set sound_event_dir=/path/to/dcase2016_task2_train_sounds on the command line.'
-    checkpoint = 'best'
-    with (Path(exp_dir) / '1' / 'config.json').open() as f:
-        conf = json.load(f)
+    checkpoint = 'best_fscore'
     segment_length = 20.
     num_workers = 2
     prefetch_buffer = 4
-    del conf
 
     device = 0 if torch.cuda.is_available() else 'cpu'
     mixtures_per_sound = 3
@@ -312,18 +307,13 @@ def main(
 ):
     assert all([node in db.room_to_nodes['living'] for node in nodes])
     exp_dir = Path(exp_dir)
-    with (exp_dir / '1' / 'config.json').open() as f:
-        conf = json.load(f)
 
     print('Device:', device)
     # load model
-    model = BinomialClassifier(
-        cnn_2d=CNN2d(**conf['model']['cnn_2d']),
-        cnn_1d=CNN1d(**conf['model']['cnn_1d']),
-        pooling=AutoPool(**conf['model']['pool'])
+    model = BinomialClassifier.from_storage_dir(
+        storage_dir=exp_dir, config_name='1/config.json',
+        checkpoint_name=f'ckpt_{checkpoint}.pth'
     )
-    ckpt = torch.load(exp_dir / f'ckpt-{checkpoint}.pth')
-    model.load_state_dict(ckpt)
     model.pooling.alpha = 2.0
     model.to(device)
     model.eval()

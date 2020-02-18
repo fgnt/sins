@@ -31,6 +31,7 @@ Install requirements
 ```bash
 $ pip install --user git+https://github.com/fgnt/lazy_dataset.git@ec06c1e8ff4ccb09420d2d641db8f6d9b1099a4f
 $ pip install --user git+https://github.com/fgnt/paderbox.git@7b3b4e9d00e07664596108f987292b8c78d846b1
+$ pip install --user git+https://github.com/fgnt/padertorch.git@88233a0c33ddcc33a6842a5f8dc6c24df84d9f09
 ```
 
 Clone the repo

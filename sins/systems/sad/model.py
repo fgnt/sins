@@ -2,28 +2,25 @@ import numpy as np
 import torch
 from einops import rearrange
 from sins.systems.eval import fscore
-from sins.systems.modules import CNN1d, CNN2d, AutoPool
+from padertorch import Model
+from padertorch.contrib.je.modules.conv import CNN2d, CNN1d
+from padertorch.contrib.je.modules.global_pooling import AutoPool
 from torch import nn
 from torchvision.utils import make_grid
 
 
-class BinomialClassifier(nn.Module):
+class BinomialClassifier(Model):
     """
-
     >>> cnn = BinomialClassifier(**{\
         'label_key': 'labels',\
         'cnn_2d': CNN2d(**{\
             'in_channels': 1,\
-            'hidden_channels': 32,\
-            'num_layers': 3,\
-            'out_channels': 16,\
+            'out_channels': 3*[32] + [16],\
             'kernel_size': 3\
         }),\
         'cnn_1d': CNN1d(**{\
             'in_channels': 1024,\
-            'hidden_channels': 32,\
-            'num_layers': 3,\
-            'out_channels': 10,\
+            'out_channels': 3*[32] + [10],\
             'kernel_size': 3\
         }),\
         'pooling': AutoPool(**{'n_classes': 10})\
@@ -31,7 +28,7 @@ class BinomialClassifier(nn.Module):
     >>> inputs = {\
         'features': torch.zeros(4, 1, 64, 100),\
         'labels': torch.zeros(4, 10),\
-        'seq_len': None\
+        'seq_len': None,\
     }
     >>> outputs = (probs, seq_len) = cnn(inputs)
     >>> probs.shape
@@ -52,12 +49,7 @@ class BinomialClassifier(nn.Module):
 
     def cnn_2d(self, x, seq_len=None):
         if self._cnn_2d is not None:
-            x = self._cnn_2d(x)
-            if seq_len is not None:
-                in_shape = [(128, n) for n in seq_len]
-                out_shape = self._cnn_2d.get_out_shape(in_shape)
-                seq_len = [s[-1] for s in out_shape]
-
+            x, seq_len = self._cnn_2d(x, seq_len)
         if x.dim() != 3:
             assert x.dim() == 4
             x = rearrange(x, 'b c f t -> b (c f) t')
@@ -65,9 +57,7 @@ class BinomialClassifier(nn.Module):
 
     def cnn_1d(self, x, seq_len=None):
         if self._cnn_1d is not None:
-            x = self._cnn_1d(x)
-            if seq_len is not None:
-                seq_len = self._cnn_1d.get_out_shape(seq_len)
+            x, seq_len = self._cnn_1d(x, seq_len)
         return x, seq_len
 
     def forward(self, inputs):
@@ -123,11 +113,11 @@ class BinomialClassifier(nn.Module):
     def modify_summary(self, summary):
         if 'scores' in summary['scalars']:
             scores = np.array(summary['scalars'].pop('scores')).reshape(
-                (-1, self._cnn_1d.out_channels)
+                (-1, self._cnn_1d.out_channels[-1])
             )
             decision = scores > self.decision_boundary
             targets = np.array(summary['scalars'].pop('targets')).reshape(
-                (-1, self._cnn_1d.out_channels)
+                (-1, self._cnn_1d.out_channels[-1])
             )
             f, p, r = fscore(targets, decision)
             summary['scalars']['precision'] = p.mean()
@@ -137,7 +127,7 @@ class BinomialClassifier(nn.Module):
             summary['scalars'][key] = np.mean(scalar)
         for key, image in summary['images'].items():
             summary['images'][key] = make_grid(
-                image.unsqueeze(1).flip(2),  normalize=True, scale_each=False,
-                nrow=1
+                image.unsqueeze(1).flip(2),
+                normalize=True, scale_each=False, nrow=1
             )
         return summary
