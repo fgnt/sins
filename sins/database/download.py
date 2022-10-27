@@ -58,7 +58,7 @@ def download_node(node_id, database_path):
             'Node{}_audio_{:02}.zip'.format(node_id, j) if int(node_id) < 10
             else 'Node{}_audio_{}.zip'.format(node_id, j)
             for j in range(1, 10 + (int(node_id) < 9))
-        ] + ['license.pdf'] + (['readme.txt'] if node_id != '1' and node_id != '8' else [])
+        ] + ['license.pdf'] + (['readme.txt'] if node_id not in ['1', '8'] else [])
     ]
     download_file_list(files, database_path, exist_ok=True)
 
